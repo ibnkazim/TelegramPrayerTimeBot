@@ -16,7 +16,8 @@ logging.basicConfig(filename='prayer_bot.log', level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Конфигурация
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # Токен будет взят из переменной окружения
+BOT_TOKEN = os.getenv("BOT_TOKEN") 
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 PRAYER_URL = "https://qmdi.ru/raspisanie-namazov/"
 SUBSCRIBERS_FILE = "subscribers.json"
 
