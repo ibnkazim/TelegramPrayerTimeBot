@@ -293,7 +293,7 @@ REPLY_KEYBOARD = ReplyKeyboardMarkup([
     [KeyboardButton("Подписаться на уведомления"), KeyboardButton("Отписаться")],
     [KeyboardButton("Расписание намазов"), KeyboardButton("Случайный хадис")],
     [KeyboardButton("Связаться с разработчиком"), KeyboardButton("Азкары")],
-    [KeyboardButton("Исламская дата")]
+    [KeyboardButton("Дата")]
 ], resize_keyboard=True, one_time_keyboard=False)
 
 def load_subscribers():
@@ -422,7 +422,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         subscribers.add(chat_id)
         save_subscribers()
         await update.message.reply_text(
-            "Ас-саляму алейкум уа рахматуллахи уа баракатуху! Вы подписались на уведомления о намазе!",
+            "ДжазакАллаху хайран! Вы подписались на уведомления о намазе!",
             reply_markup=REPLY_KEYBOARD
         )
         logging.info("Новый подписчик: %s", chat_id)
@@ -546,7 +546,7 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await contact_developer(update, context)
     elif text == "Азкары":
         await show_adhkar(update, context)
-    elif text == "Исламская дата":
+    elif text == "Дата":
         await show_islamic_date(update, context)
     else:
         await update.message.reply_text(
