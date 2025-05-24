@@ -52,38 +52,52 @@ def save_subscribers():
     except Exception as e:
         logging.error("Ошибка сохранения подписчиков: %s", e)
 
+
 async def fetch_prayer_times():
-    """Получение времени намаза с сайта qmdi.ru"""
-    try:
-        response = requests.get(PRAYER_URL)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
+    prayer_times.update({
+        "Фаджр": (datetime.now().strftime("%H:%M")),  # Текущее время
+        "Зухр": "12:00",
+        "Аср": "16:00",
+        "Магриб": "18:30",
+        "Иша": "21:54"
+    })
+    logging.info("Тестовое расписание установлено: %s", prayer_times)
+    return True
+
+
+
+# async def fetch_prayer_times():
+#     """Получение времени намаза с сайта qmdi.ru"""
+#     try:
+#         response = requests.get(PRAYER_URL)
+#         response.raise_for_status()
+#         soup = BeautifulSoup(response.text, "html.parser")
         
-        table = soup.find("table")
-        if not table:
-            logging.error("Таблица не найдена")
-            return False
+#         table = soup.find("table")
+#         if not table:
+#             logging.error("Таблица не найдена")
+#             return False
         
-        rows = table.find_all("tr")[1:]
-        today = datetime.now().strftime("%d.%m.%Y")
+#         rows = table.find_all("tr")[1:]
+#         today = datetime.now().strftime("%d.%m.%Y")
         
-        for row in rows:
-            cells = row.find_all("td")
-            if len(cells) >= 6 and cells[0].text.strip() == today:
-                prayer_times.update({
-                    "Фаджр(Сабах)": cells[1].text.strip(),
-                    "Зухр(Уйле)": cells[2].text.strip(),
-                    "Аср(Экинди)": cells[3].text.strip(),
-                    "Магриб(Акъшам)": cells[4].text.strip(),
-                    "Иша(Ятсы)": cells[5].text.strip()
-                })
-                logging.info("Расписание намаза обновлено: %s", prayer_times)
-                return True
-        logging.warning("Расписание на %s не найдено", today)
-        return False
-    except Exception as e:
-        logging.error("Ошибка при парсинге: %s", e)
-        return False
+#         for row in rows:
+#             cells = row.find_all("td")
+#             if len(cells) >= 6 and cells[0].text.strip() == today:
+#                 prayer_times.update({
+#                     "Фаджр(Сабах)": cells[1].text.strip(),
+#                     "Зухр(Уйле)": cells[2].text.strip(),
+#                     "Аср(Экинди)": cells[3].text.strip(),
+#                     "Магриб(Акъшам)": cells[4].text.strip(),
+#                     "Иша(Ятсы)": cells[5].text.strip()
+#                 })
+#                 logging.info("Расписание намаза обновлено: %s", prayer_times)
+#                 return True
+#         logging.warning("Расписание на %s не найдено", today)
+#         return False
+#     except Exception as e:
+#         logging.error("Ошибка при парсинге: %s", e)
+#         return False
 
 async def send_prayer_notification(context: ContextTypes.DEFAULT_TYPE, prayer_name: str, prayer_time: str):
     """Отправка уведомления о намазе всем подписчикам"""
