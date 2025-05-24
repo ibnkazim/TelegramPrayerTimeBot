@@ -5,6 +5,8 @@ import schedule
 from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
+from fastapi import FastAPI, Request, Response
+from http import HTTPStatus
 import json
 import os
 import logging
@@ -14,12 +16,15 @@ logging.basicConfig(filename='prayer_bot.log', level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Конфигурация
-BOT_TOKEN = "7402773153:AAFxzD6OGtPEdsH87l9v_sfv6_3nOlg3PD4"  
+BOT_TOKEN = os.getenv("BOT_TOKEN")  # Токен будет взят из переменной окружения
 PRAYER_URL = "https://qmdi.ru/raspisanie-namazov/"
 SUBSCRIBERS_FILE = "subscribers.json"
 
+# Инициализация FastAPI
+app = FastAPI()
+
 # Инициализация бота
-app = Application.builder().token(BOT_TOKEN).build()
+ptb = Application.builder().token(BOT_TOKEN).updater(None).build()
 
 # Хранилище расписания намаза и подписчиков
 prayer_times = {}
@@ -94,7 +99,7 @@ def schedule_prayer_notifications():
     schedule.clear()
     for prayer, time_str in prayer_times.items():
         schedule.every().day.at(time_str).do(
-            lambda p=prayer, t=time_str: app.create_task(send_prayer_notification(app, p, t))
+            lambda p=prayer, t=time_str: ptb.create_task(send_prayer_notification(ptb, p, t))
         )
     logging.info("Уведомления запланированы: %s", prayer_times)
 
@@ -129,28 +134,60 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Вы не подписаны на уведомления.")
         logging.info("Попытка отписки неподписанного: %s", chat_id)
 
-async def main():
-    """Основная функция"""
-    logging.info("Бот запущен")
+# FastAPI webhook endpoint
+@app.post("/")
+async def process_update(request: Request):
+    """Обработка входящих обновлений от Telegram"""
+    try:
+        req = await request.json()
+        update = Update.de_json(req, ptb.bot)
+        if update:
+            await ptb.process_update(update)
+        return Response(status_code=HTTPStatus.OK)
+    except Exception as e:
+        logging.error("Ошибка обработки webhook: %s", e)
+        return Response(status_code=HTTPStatus.BAD_REQUEST)
+
+# FastAPI lifespan для настройки webhook
+@app.on_event("startup")
+async def on_startup():
+    """Настройка webhook и запуск бота"""
+    logging.info("Бот запускается")
     load_subscribers()
-    await update_prayer_times_daily()
+    await fetch_prayer_times()
+    schedule_prayer_notifications()
     schedule.every().day.at("00:01").do(
-        lambda: app.create_task(update_prayer_times_daily())
+        lambda: ptb.create_task(update_prayer_times_daily())
     )
+
+    webhook_url = os.getenv("WEBHOOK_URL")
+    if not webhook_url:
+        logging.error("WEBHOOK_URL не установлен")
+        raise ValueError("WEBHOOK_URL не установлен")
     
-    # Добавление обработчиков команд
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("stop", stop))
+    await ptb.bot.setWebhook(webhook_url)
+    logging.info("Webhook установлен: %s", webhook_url)
+    await ptb.initialize()
+    await ptb.start()
+
+    # Запуск планировщика в фоновом режиме
+    async def run_scheduler():
+        while True:
+            schedule.run_pending()
+            await asyncio.sleep(1)
     
-    # Запуск бота
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-    
-    # Запуск планировщика
-    while True:
-        schedule.run_pending()
-        await asyncio.sleep(1)
+    ptb.create_task(run_scheduler())
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    """Остановка бота"""
+    await ptb.stop()
+    logging.info("Бот остановлен")
+
+# Добавление обработчиков команд
+ptb.add_handler(CommandHandler("start", start))
+ptb.add_handler(CommandHandler("stop", stop))
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
