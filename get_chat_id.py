@@ -8,3 +8,5 @@ async def get_chat_id():
         print(f"Chat ID: {update.message.chat.id}")
 
 asyncio.run(get_chat_id())
+
+#на случай если нужно будет добавить бота в чат
