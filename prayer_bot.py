@@ -157,7 +157,10 @@ async def send_prayer_notification(prayer_name: str, prayer_time: str):
     logging.info("Вызов send_prayer_notification: %s на %s", prayer_name, prayer_time)
     now_msk = datetime.now(timezone(timedelta(hours=3))).strftime("%H:%M:%S")  # MSK
     now_utc = datetime.now(timezone.utc).strftime("%H:%M:%S")  # UTC
-    message = f"Спешите на намаз! Спешите к спасению! {prayer_name}: {prayer_time} (MSK: {now_msk}, UTC: {now_utc})"
+    if prayer_name == "Фаджр":
+        message = f"{prayer_name}: {prayer_time} | Молитва лучше чем сон! Спешите на намаз! Спешите к спасению! (MSK: {now_msk}, UTC: {now_utc})"
+    else:
+        message = f"{prayer_name}: {prayer_time} | Спешите на намаз! Спешите к спасению! (MSK: {now_msk}, UTC: {now_utc})"
     logging.info("Отправка уведомления: %s, подписчики: %s", message, subscribers)
     try:
         for chat_id in subscribers:
@@ -178,7 +181,7 @@ def schedule_prayer_notifications():
         try:
             # Конвертируем MSK время в UTC для сервера
             msk_time = datetime.strptime(time_str, "%H:%M").replace(
-                tzinfo=msk_tz, year=2025, month=5, day=24
+                tzinfo=msk_tz, year=2025, month=5, day=25
             )
             utc_time = msk_time.astimezone(timezone.utc).strftime("%H:%M")
             schedule.every().day.at(utc_time).do(
