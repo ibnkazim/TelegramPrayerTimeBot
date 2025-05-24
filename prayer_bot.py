@@ -17,7 +17,7 @@ import aiohttp
 # Проверка наличия pytz
 try:
     import pytz
- художественный PYTZ_AVAILABLE = True
+    PYTZ_AVAILABLE = True
 except ImportError:
     PYTZ_AVAILABLE = False
     logging.warning("Модуль pytz не установлен, используется конверсия времени в UTC")
