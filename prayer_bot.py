@@ -293,7 +293,6 @@ REPLY_KEYBOARD = ReplyKeyboardMarkup([
     [KeyboardButton("Подписаться на уведомления"), KeyboardButton("Отписаться")],
     [KeyboardButton("Расписание намазов"), KeyboardButton("Случайный хадис")],
     [KeyboardButton("Связаться с разработчиком"), KeyboardButton("Азкары")],
-    [KeyboardButton("Дата")]
 ], resize_keyboard=True, one_time_keyboard=False)
 
 def load_subscribers():
@@ -503,12 +502,12 @@ async def show_islamic_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     today = datetime.now()
     try:
         hijri_date = convert.Gregorian(today.year, today.month, today.day).to_hijri()
-        message = f"Исламская дата: {hijri_date.day} {hijri_date.month_name()} {hijri_date.year} Хиджры"
+        message = f"Дата: {hijri_date.day} {hijri_date.month_name()} {hijri_date.year} Хиджры"
     except Exception as e:
-        logging.error("Ошибка конвертации в исламскую дату: %s", e)
-        message = "Исламская дата недоступна"
+        logging.error("Ошибка конвертации в дату: %s", e)
+        message = "Дата недоступна"
     await update.message.reply_text(message, reply_markup=REPLY_KEYBOARD)
-    logging.info("Исламская дата отправлена %s: %s", chat_id, message)
+    logging.info("Дата отправлена %s: %s", chat_id, message)
 
 async def contact_developer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка команды /contact для связи с разработчиком"""
@@ -546,8 +545,6 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await contact_developer(update, context)
     elif text == "Азкары":
         await show_adhkar(update, context)
-    elif text == "Дата":
-        await show_islamic_date(update, context)
     else:
         await update.message.reply_text(
             "Пожалуйста, используйте кнопки меню.",
@@ -625,11 +622,11 @@ async def on_startup():
             now = datetime.now(timezone(timedelta(hours=3)))  # MSK
             future = now + timedelta(minutes=2)  # Уведомление через 2 минуты
             prayer_times.update({
-                "Фаджр": future.strftime("%H:%M"),  # Быстрый тест
-                "Зухр": "12:00",
-                "Аср": "16:00",
-                "Магриб": "18:30",
-                "Иша": "20:00"
+                "Фаджр (Сабах)": "03:07",
+                "Зухр (Уйле)": "12:45",
+                "Аср (Экинди)": "16:46",
+                "Магриб (Акъшам)": "20:26",
+                "Иша (Ятсы)": "22:13"
             })
             logging.info("Тестовое расписание: %s", prayer_times)
         schedule_prayer_notifications()
