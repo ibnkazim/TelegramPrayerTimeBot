@@ -2,10 +2,9 @@ import asyncio
 import requests
 from bs4 import BeautifulSoup
 import schedule
-import time
 from datetime import datetime
-import telegram
-from telegram.ext import Updater, CommandHandler
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 import json
 import os
 import logging
@@ -20,8 +19,7 @@ PRAYER_URL = "https://qmdi.ru/raspisanie-namazov/"
 SUBSCRIBERS_FILE = "subscribers.json"
 
 # Инициализация бота
-bot = telegram.Bot(token=BOT_TOKEN)
-updater = Updater(BOT_TOKEN, use_context=True)
+app = Application.builder().token(BOT_TOKEN).build()
 
 # Хранилище расписания намаза и подписчиков
 prayer_times = {}
@@ -36,7 +34,7 @@ def load_subscribers():
                 subscribers = set(json.load(f))
             logging.info("Подписчики загружены: %s", subscribers)
         except Exception as e:
-            logging.error("Ошибка при загрузке подписчиков: %s", e)
+            logging.error("Ошибка загрузки подписчиков: %s", e)
     return subscribers
 
 def save_subscribers():
@@ -46,60 +44,47 @@ def save_subscribers():
             json.dump(list(subscribers), f)
         logging.info("Подписчики сохранены: %s", subscribers)
     except Exception as e:
-        logging.error("Ошибка при сохранении подписчиков: %s", e)
-
+        logging.error("Ошибка сохранения подписчиков: %s", e)
 
 async def fetch_prayer_times():
-    # Для теста
-    prayer_times.update({
-        "Фаджр": (datetime.now().strftime("%H:%M")),  # Текущее время
-        "Зухр": "12:00",
-        "Аср": "16:00",
-        "Магриб": "18:30",
-        "Иша": "20:00"
-    })
-    return True
-
-
-# async def fetch_prayer_times():
-#     """Получение времени намаза с сайта qmdi.ru"""
-#     try:
-#         response = requests.get(PRAYER_URL)
-#         response.raise_for_status()
-#         soup = BeautifulSoup(response.text, "html.parser")
+    """Получение времени намаза с сайта qmdi.ru"""
+    try:
+        response = requests.get(PRAYER_URL)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
         
-#         table = soup.find("table")
-#         if not table:
-#             logging.error("Таблица не найдена")
-#             return False
+        table = soup.find("table")
+        if not table:
+            logging.error("Таблица не найдена")
+            return False
         
-#         rows = table.find_all("tr")[1:]
-#         today = datetime.now().strftime("%d.%m.%Y")
+        rows = table.find_all("tr")[1:]
+        today = datetime.now().strftime("%d.%m.%Y")
         
-#         for row in rows:
-#             cells = row.find_all("td")
-#             if len(cells) >= 6 and cells[0].text.strip() == today:
-#                 prayer_times.update({
-#                     "Фаджр(Сабах)": cells[1].text.strip(),
-#                     "Зухр(Уйле)": cells[2].text.strip(),
-#                     "Аср(Экнди)": cells[3].text.strip(),
-#                     "Магриб(Акъшам)": cells[4].text.strip(),
-#                     "Иша(Ятсы)": cells[5].text.strip()
-#                 })
-#                 logging.info("Расписание намаза обновлено: %s", prayer_times)
-#                 return True
-#         logging.warning("Расписание на %s не найдено", today)
-#         return False
-#     except Exception as e:
-#         logging.error("Ошибка при парсинге: %s", e)
-#         return False
+        for row in rows:
+            cells = row.find_all("td")
+            if len(cells) >= 6 and cells[0].text.strip() == today:
+                prayer_times.update({
+                    "Фаджр(Сабах)": cells[1].text.strip(),
+                    "Зухр(Уйле)": cells[2].text.strip(),
+                    "Аср(Экинди)": cells[3].text.strip(),
+                    "Магриб(Акъшам)": cells[4].text.strip(),
+                    "Иша(Ятсы)": cells[5].text.strip()
+                })
+                logging.info("Расписание намаза обновлено: %s", prayer_times)
+                return True
+        logging.warning("Расписание на %s не найдено", today)
+        return False
+    except Exception as e:
+        logging.error("Ошибка при парсинге: %s", e)
+        return False
 
-async def send_prayer_notification(prayer_name, prayer_time):
+async def send_prayer_notification(context: ContextTypes.DEFAULT_TYPE, prayer_name: str, prayer_time: str):
     """Отправка уведомления о намазе всем подписчикам"""
     message = f"Время намаза {prayer_name}: {prayer_time}"
     for chat_id in subscribers:
         try:
-            await bot.send_message(chat_id=chat_id, text=message)
+            await context.bot.send_message(chat_id=chat_id, text=message)
             logging.info("Уведомление отправлено %s: %s", chat_id, message)
         except Exception as e:
             logging.error("Ошибка при отправке %s: %s", chat_id, e)
@@ -109,7 +94,7 @@ def schedule_prayer_notifications():
     schedule.clear()
     for prayer, time_str in prayer_times.items():
         schedule.every().day.at(time_str).do(
-            lambda p=prayer, t=time_str: asyncio.ensure_future(send_prayer_notification(p, t))
+            lambda p=prayer, t=time_str: app.create_task(send_prayer_notification(app, p, t))
         )
     logging.info("Уведомления запланированы: %s", prayer_times)
 
@@ -120,9 +105,9 @@ async def update_prayer_times_daily():
     else:
         logging.error("Не удалось обновить расписание")
 
-async def start(update, context):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка команды /start"""
-    chat_id = update.message.chat.id
+    chat_id = update.effective_chat.id
     if chat_id not in subscribers:
         subscribers.add(chat_id)
         save_subscribers()
@@ -132,9 +117,9 @@ async def start(update, context):
         await update.message.reply_text("Вы уже подписаны на уведомления.")
         logging.info("Повторная подписка: %s", chat_id)
 
-async def stop(update, context):
+async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка команды /stop"""
-    chat_id = update.message.chat.id
+    chat_id = update.effective_chat.id
     if chat_id in subscribers:
         subscribers.remove(chat_id)
         save_subscribers()
@@ -144,23 +129,25 @@ async def stop(update, context):
         await update.message.reply_text("Вы не подписаны на уведомления.")
         logging.info("Попытка отписки неподписанного: %s", chat_id)
 
-def setup_handlers():
-    """Настройка обработчиков команд"""
-    dp = updater.dispatcher
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("stop", stop))
-    updater.start_polling()
-    logging.info("Обработчики команд настроены")
-
 async def main():
     """Основная функция"""
     logging.info("Бот запущен")
     load_subscribers()
     await update_prayer_times_daily()
     schedule.every().day.at("00:01").do(
-        lambda: asyncio.ensure_future(update_prayer_times_daily())
+        lambda: app.create_task(update_prayer_times_daily())
     )
-    setup_handlers()
+    
+    # Добавление обработчиков команд
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("stop", stop))
+    
+    # Запуск бота
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    
+    # Запуск планировщика
     while True:
         schedule.run_pending()
         await asyncio.sleep(1)
