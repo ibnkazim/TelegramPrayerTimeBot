@@ -12,6 +12,14 @@ import os
 import logging
 import sys
 
+# Проверка наличия pytz
+try:
+    import pytz
+    PYTZ_AVAILABLE = True
+except ImportError:
+    PYTZ_AVAILABLE = False
+    logging.warning("Модуль pytz не установлен, используется конверсия времени в UTC")
+
 # Настройка логирования в консоль
 logging.basicConfig(
     level=logging.INFO,
@@ -114,8 +122,9 @@ async def fetch_prayer_times():
 async def send_prayer_notification(prayer_name: str, prayer_time: str):
     """Отправка уведомления о намазе всем подписчикам"""
     logging.info("Вызов send_prayer_notification: %s на %s", prayer_name, prayer_time)
-    now = datetime.now(timezone(timedelta(hours=3))).strftime("%H:%M")  # MSK
-    message = f"Время намаза {prayer_name}: {prayer_time} (MSK: {now})"
+    now_msk = datetime.now(timezone(timedelta(hours=3))).strftime("%H:%M:%S")  # MSK
+    now_utc = datetime.now(timezone.utc).strftime("%H:%M:%S")  # UTC
+    message = f"Время намаза {prayer_name}: {prayer_time} (MSK: {now_msk}, UTC: {now_utc})"
     logging.info("Отправка уведомления: %s, подписчики: %s", message, subscribers)
     try:
         for chat_id in subscribers:
@@ -131,11 +140,20 @@ def schedule_prayer_notifications():
     """Планирование уведомлений"""
     schedule.clear()
     logging.info("Планирование уведомлений")
+    msk_tz = timezone(timedelta(hours=3))
     for prayer, time_str in prayer_times.items():
-        schedule.every().day.at(time_str, tz=timezone(timedelta(hours=3))).do(
-            lambda p=prayer, t=time_str: ptb.create_task(send_prayer_notification(p, t))
-        )
-        logging.info("Запланировано: %s на %s", prayer, time_str)
+        try:
+            # Конвертируем MSK время в UTC для сервера
+            msk_time = datetime.strptime(time_str, "%H:%M").replace(
+                tzinfo=msk_tz, year=2025, month=5, day=24
+            )
+            utc_time = msk_time.astimezone(timezone.utc).strftime("%H:%M")
+            schedule.every().day.at(utc_time).do(
+                lambda p=prayer, t=time_str: ptb.create_task(send_prayer_notification(p, t))
+            )
+            logging.info("Запланировано: %s на %s MSK (%s UTC)", prayer, time_str, utc_time)
+        except ValueError as e:
+            logging.error("Ошибка формата времени для %s: %s", prayer, e)
     logging.info("Все уведомления запланированы: %s", prayer_times)
 
 async def update_prayer_times_daily():
@@ -205,6 +223,15 @@ async def get_env():
         "PORT": os.getenv("PORT")
     }
 
+@app.get("/time")
+async def get_time():
+    """Отладка: текущее время сервера"""
+    logging.info("Запрос текущего времени")
+    return {
+        "msk_time": datetime.now(timezone(timedelta(hours=3))).strftime("%H:%M:%S"),
+        "utc_time": datetime.now(timezone.utc).strftime("%H:%M:%S")
+    }
+
 # FastAPI lifespan для настройки webhook
 @app.on_event("startup")
 async def on_startup():
@@ -221,7 +248,7 @@ async def on_startup():
                 "Зухр": "12:00",
                 "Аср": "16:00",
                 "Магриб": "18:30",
-                "Иша": "22:45"
+                "Иша": "20:00"
             })
             logging.info("Тестовое расписание: %s", prayer_times)
         schedule_prayer_notifications()
@@ -245,8 +272,9 @@ async def on_startup():
             logging.info("Запуск планировщика")
             while True:
                 try:
-                    now = datetime.now(timezone(timedelta(hours=3))).strftime("%H:%M:%S")
-                    logging.debug("Планировщик активен: %s", now)
+                    now_msk = datetime.now(timezone(timedelta(hours=3))).strftime("%H:%M:%S")
+                    now_utc = datetime.now(timezone.utc).strftime("%H:%M:%S")
+                    logging.debug("Планировщик активен: MSK=%s, UTC=%s", now_msk, now_utc)
                     schedule.run_pending()
                     await asyncio.sleep(1)
                 except Exception as e:
