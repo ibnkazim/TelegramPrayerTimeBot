@@ -1,0 +1,1 @@
+worker: python prayer_bot.py
