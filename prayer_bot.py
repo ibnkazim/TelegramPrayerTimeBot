@@ -111,25 +111,29 @@ async def fetch_prayer_times():
         logging.error("Ошибка парсинга: %s", e)
         return False
 
-async def send_prayer_notification(context: ContextTypes.DEFAULT_TYPE, prayer_name: str, prayer_time: str):
+async def send_prayer_notification(prayer_name: str, prayer_time: str):
     """Отправка уведомления о намазе всем подписчикам"""
+    logging.info("Вызов send_prayer_notification: %s на %s", prayer_name, prayer_time)
     now = datetime.now(timezone(timedelta(hours=3))).strftime("%H:%M")  # MSK
     message = f"Время намаза {prayer_name}: {prayer_time} (MSK: {now})"
     logging.info("Отправка уведомления: %s, подписчики: %s", message, subscribers)
-    for chat_id in subscribers:
-        try:
-            await context.bot.send_message(chat_id=chat_id, text=message)
-            logging.info("Уведомление отправлено %s: %s", chat_id, message)
-        except Exception as e:
-            logging.error("Ошибка при отправке %s: %s", chat_id, e)
+    try:
+        for chat_id in subscribers:
+            try:
+                await ptb.bot.send_message(chat_id=chat_id, text=message)
+                logging.info("Уведомление отправлено %s: %s", chat_id, message)
+            except Exception as e:
+                logging.error("Ошибка при отправке %s: %s", chat_id, e)
+    except Exception as e:
+        logging.error("Общая ошибка в send_prayer_notification: %s", e)
 
 def schedule_prayer_notifications():
     """Планирование уведомлений"""
     schedule.clear()
     logging.info("Планирование уведомлений")
     for prayer, time_str in prayer_times.items():
-        schedule.every().day.at(time_str).do(
-            lambda p=prayer, t=time_str: ptb.create_task(send_prayer_notification(ptb, p, t))
+        schedule.every().day.at(time_str, tz=timezone(timedelta(hours=3))).do(
+            lambda p=prayer, t=time_str: ptb.create_task(send_prayer_notification(p, t))
         )
         logging.info("Запланировано: %s на %s", prayer, time_str)
     logging.info("Все уведомления запланированы: %s", prayer_times)
@@ -210,13 +214,14 @@ async def on_startup():
         load_subscribers()
         if not await fetch_prayer_times():
             logging.warning("Используется тестовое расписание")
-            now = datetime.now(timezone(timedelta(hours=3))).strftime("%H:%M")  # MSK
+            now = datetime.now(timezone(timedelta(hours=3)))  # MSK
+            future = now + timedelta(minutes=2)  # Уведомление через 2 минуты
             prayer_times.update({
-                "Фаджр": now,  # Текущее время для теста
+                "Фаджр": future.strftime("%H:%M"),  # Быстрый тест
                 "Зухр": "12:00",
                 "Аср": "16:00",
                 "Магриб": "18:30",
-                "Иша": "22:35"
+                "Иша": "22:45"
             })
             logging.info("Тестовое расписание: %s", prayer_times)
         schedule_prayer_notifications()
@@ -239,8 +244,14 @@ async def on_startup():
         async def run_scheduler():
             logging.info("Запуск планировщика")
             while True:
-                schedule.run_pending()
-                await asyncio.sleep(1)
+                try:
+                    now = datetime.now(timezone(timedelta(hours=3))).strftime("%H:%M:%S")
+                    logging.debug("Планировщик активен: %s", now)
+                    schedule.run_pending()
+                    await asyncio.sleep(1)
+                except Exception as e:
+                    logging.error("Ошибка в планировщике: %s", e)
+                    await asyncio.sleep(5)
         
         ptb.create_task(run_scheduler())
     except Exception as e:
