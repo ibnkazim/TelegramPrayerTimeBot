@@ -11,6 +11,7 @@ import json
 import os
 import logging
 import sys
+import random
 
 # Проверка наличия pytz
 try:
@@ -48,6 +49,30 @@ ptb = Application.builder().token(BOT_TOKEN).updater(None).build()
 # Хранилище расписания намаза и подписчиков
 prayer_times = {}
 subscribers = set()
+
+# Список хадисов из Сахих аль-Бухари
+HADITHS = [
+    {
+        "text": "Пророк (мир ему) сказал: 'Кто совершит намаз в два ракаата перед утренней молитвой, тот будет защищен от огня.'",
+        "reference": "Книга 8, Хадис 468"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Пять ежедневных молитв подобны реке, протекающей у ваших дверей, в которой вы омываетесь пять раз в день.'",
+        "reference": "Книга 10, Хадис 528"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Тот, кто пропустит молитву Аср, как будто потерял свою семью и имущество.'",
+        "reference": "Книга 10, Хадис 527"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Деяния оцениваются по намерениям, и каждому человеку достанется то, что он намеревался.'",
+        "reference": "Книга 1, Хадис 1"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Тому, кто прочитает трижды каждое утро и вечер: «С именем Аллаха, с которым ничто не вредит ни на земле, ни в небесах, и Он — Слышащий, Знающий», — ничто не повредит.'",
+        "reference": "Книга 54, Хадис 419"
+    }
+]
 
 def load_subscribers():
     """Загрузка подписчиков из файла"""
@@ -171,7 +196,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat_id not in subscribers:
         subscribers.add(chat_id)
         save_subscribers()
-        await update.message.reply_text("Вы подписались на уведомления о намазе!")
+        await update.message.reply_text("Ас-саляму алейкум уа рахматуллахи уа баракатуху! Вы подписались на уведомления о намазе!")
         logging.info("Новый подписчик: %s", chat_id)
     else:
         await update.message.reply_text("Вы уже подписаны на уведомления.")
@@ -203,6 +228,23 @@ async def show_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("Расписание на сегодня недоступно.")
         logging.info("Расписание недоступно для %s", chat_id)
+
+async def show_hadith(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка команды /hadith для отображения случайного хадиса"""
+    chat_id = update.effective_chat.id
+    logging.info("Команда /hadith от %s", chat_id)
+    hadith = random.choice(HADITHS)
+    message = f"Хадис из Сахих аль-Бухари:\n{hadith['text']} ({hadith['reference']})"
+    await update.message.reply_text(message)
+    logging.info("Хадис отправлен %s: %s", chat_id, message)
+
+async def contact_developer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка команды /contact для связи с разработчиком"""
+    chat_id = update.effective_chat.id
+    logging.info("Команда /contact от %s", chat_id)
+    message = "Свяжитесь с разработчиком: @ibn_kazim"
+    await update.message.reply_text(message)
+    logging.info("Контакт отправлен %s: %s", chat_id, message)
 
 # FastAPI webhook endpoint
 @app.post("/")
@@ -258,7 +300,7 @@ async def on_startup():
             now = datetime.now(timezone(timedelta(hours=3)))  # MSK
             future = now + timedelta(minutes=2)  # Уведомление через 2 минуты
             prayer_times.update({
-                "Фаджр(Сабах)": future.strftime("%H:%M"),  # Быстрый тест
+                "Фаджр": future.strftime("%H:%M"),  # Быстрый тест
                 "Зухр": "12:00",
                 "Аср": "16:00",
                 "Магриб": "18:30",
@@ -310,6 +352,8 @@ async def on_shutdown():
 ptb.add_handler(CommandHandler("start", start))
 ptb.add_handler(CommandHandler("stop", stop))
 ptb.add_handler(CommandHandler("schedule", show_schedule))
+ptb.add_handler(CommandHandler("hadith", show_hadith))
+ptb.add_handler(CommandHandler("contact", contact_developer))
 
 if __name__ == "__main__":
     import uvicorn
