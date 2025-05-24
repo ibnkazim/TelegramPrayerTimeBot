@@ -1,8 +1,1 @@
-python-telegram-bot==20.8
-requests==2.32.3
-beautifulsoup4==4.13.4
-schedule==1.2.2
-fastapi==0.115.12
-uvicorn==0.34.2
-pytz==2025.2
-aiohttp==3.10.10
+python-telegram-bot==20.8 requests==2.32.3 beautifulsoup4==4.13.4 schedule==1.2.2 fastapi==0.115.12 uvicorn==0.34.2 pytz==2025.2 aiohttp==3.10.10 hijri-converter==2.3.1

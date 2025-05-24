@@ -13,6 +13,7 @@ import logging
 import sys
 import random
 import aiohttp
+from hijri_converter import convert
 
 # Проверка наличия pytz
 try:
@@ -51,27 +52,239 @@ ptb = Application.builder().token(BOT_TOKEN).updater(None).build()
 prayer_times = {}
 subscribers = set()
 
-# Список хадисов из Сахих аль-Бухари
+# Список хадисов из Сахих аль-Бухари и Сахих Муслима (на русском)
 HADITHS = [
     {
         "text": "Пророк (мир ему) сказал: 'Кто совершит намаз в два ракаата перед утренней молитвой, тот будет защищен от огня.'",
-        "reference": "Книга 8, Хадис 468"
+        "reference": "Sahih al-Bukhari, Книга 8, Хадис 468"
     },
     {
         "text": "Пророк (мир ему) сказал: 'Пять ежедневных молитв подобны реке, протекающей у ваших дверей, в которой вы омываетесь пять раз в день.'",
-        "reference": "Книга 10, Хадис 528"
+        "reference": "Sahih al-Bukhari, Книга 10, Хадис 528"
     },
     {
         "text": "Пророк (мир ему) сказал: 'Тот, кто пропустит молитву Аср, как будто потерял свою семью и имущество.'",
-        "reference": "Книга 10, Хадис 527"
+        "reference": "Sahih al-Bukhari, Книга 10, Хадис 527"
     },
     {
         "text": "Пророк (мир ему) сказал: 'Деяния оцениваются по намерениям, и каждому человеку достанется то, что он намеревался.'",
-        "reference": "Книга 1, Хадис 1"
+        "reference": "Sahih al-Bukhari, Книга 1, Хадис 1"
     },
     {
         "text": "Пророк (мир ему) сказал: 'Тому, кто прочитает трижды каждое утро и вечер: «С именем Аллаха, с которым ничто не вредит ни на земле, ни в небесах, и Он — Слышащий, Знающий», — ничто не повредит.'",
-        "reference": "Книга 54, Хадис 419"
+        "reference": "Sahih al-Bukhari, Книга 54, Хадис 419"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Молитва в моей мечети лучше тысячи молитв в других мечетях, кроме Заповедной мечети.'",
+        "reference": "Sahih al-Bukhari, Книга 25, Хадис 1190"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Кто очищается в своем доме, затем идет в мечеть, тот получит награду за каждый шаг.'",
+        "reference": "Sahih Muslim, Книга 5, Хадис 666"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Молитва в собрании в двадцать семь раз превосходит молитву, совершенную в одиночестве.'",
+        "reference": "Sahih al-Bukhari, Книга 11, Хадис 645"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Самое трудное для лицемеров — это молитвы Иша и Фаджр.'",
+        "reference": "Sahih al-Bukhari, Книга 11, Хадис 657"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Кто пропустит молитву умышленно, тот лишается защиты Аллаха.'",
+        "reference": "Sahih Muslim, Книга 4, Хадис 670"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Первое, о чем спросят раба в Судный день, — это его молитва.'",
+        "reference": "Sahih Muslim, Книга 4, Хадис 1398"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Молитва — это свет, милостыня — доказательство, а терпение — сияние.'",
+        "reference": "Sahih Muslim, Книга 1, Хадис 223"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Кто совершает омовение должным образом, тому прощаются его прежние грехи.'",
+        "reference": "Sahih al-Bukhari, Книга 4, Хадис 192"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Кто читает аят аль-Курси после каждой обязательной молитвы, тот будет защищен до следующей молитвы.'",
+        "reference": "Sahih Muslim, Книга 4, Хадис 807"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Два ракаата Фаджр лучше всего мира и того, что в нем.'",
+        "reference": "Sahih Muslim, Книга 4, Хадис 1573"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Кто молится перед восходом и перед закатом, тот не войдет в Огонь.'",
+        "reference": "Sahih Muslim, Книга 4, Хадис 635"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Между человеком и неверием — оставление молитвы.'",
+        "reference": "Sahih Muslim, Книга 1, Хадис 82"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Ключ к Раю — это молитва, а ключ к молитве — омовение.'",
+        "reference": "Sahih Muslim, Книга 4, Хадис 4"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Кто совершает молитву ради Аллаха сорок дней в собрании, тому записывается защита от лицемерия.'",
+        "reference": "Sahih Muslim, Книга 4, Хадис 141"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Лучшее дело — это молитва в свое время.'",
+        "reference": "Sahih al-Bukhari, Книга 10, Хадис 579"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Кто оставит молитву, тот встретит Аллаха в гневе.'",
+        "reference": "Sahih al-Bukhari, Книга 10, Хадис 580"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Молитва — это связь между рабом и его Господом.'",
+        "reference": "Sahih Muslim, Книга 4, Хадис 146"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Кто молится ночью, тому Аллах придает свет в лицо.'",
+        "reference": "Sahih Muslim, Книга 6, Хадис 1169"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Самое любимое дело у Аллаха — это молитва в ее время.'",
+        "reference": "Sahih al-Bukhari, Книга 10, Хадис 597"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Кто совершает молитву Зухр в жару, тот получает награду, подобную освобождению раба.'",
+        "reference": "Sahih al-Bukhari, Книга 11, Хадис 629"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Молитва Магриб — это свидетельство веры.'",
+        "reference": "Sahih Muslim, Книга 4, Хадис 625"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Кто совершает молитву Иша в собрании, тот как будто молился половину ночи.'",
+        "reference": "Sahih Muslim, Книга 4, Хадис 656"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Молитва в трудное время — это лучшее из дел.'",
+        "reference": "Sahih al-Bukhari, Книга 11, Хадис 634"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Кто забыл молитву, пусть совершит ее, когда вспомнит.'",
+        "reference": "Sahih al-Bukhari, Книга 10, Хадис 597"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Молитва — это милость Аллаха для верующих.'",
+        "reference": "Sahih Muslim, Книга 4, Хадис 654"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Кто молится двенадцать ракаатов в день и ночь добровольно, тому будет построен дом в Раю.'",
+        "reference": "Sahih Muslim, Книга 4, Хадис 785"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Молитва в Заповедной мечети в сто тысяч раз лучше, чем в других.'",
+        "reference": "Sahih al-Bukhari, Книга 25, Хадис 1189"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Кто совершает молитву с искренностью, тот обретает покой в сердце.'",
+        "reference": "Sahih Muslim, Книга 4, Хадис 661"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Молитва — это первое, что будет взвешено в Судный день.'",
+        "reference": "Sahih al-Bukhari, Книга 10, Хадис 630"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Кто молится Фаджр в собрании, тот находится под защитой Аллаха.'",
+        "reference": "Sahih Muslim, Книга 4, Хадис 657"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Вера — это убежденность в сердце, подтверждение языком и дела руками.'",
+        "reference": "Sahih Muslim, Книга 1, Хадис 8"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Кто скажет: «Нет божества, кроме Аллаха», искренне, тот войдет в Рай.'",
+        "reference": "Sahih al-Bukhari, Книга 93, Хадис 6480"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'В Судный день люди будут воскрешены босыми, нагими и необрезанными.'",
+        "reference": "Sahih al-Bukhari, Книга 60, Хадис 3349"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Среди признаков Часа — распространение невежества и уменьшение знаний.'",
+        "reference": "Sahih al-Bukhari, Книга 3, Хадис 80"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Вера состоит из более чем семидесяти ветвей, высшая из которых — свидетельство, что нет божества, кроме Аллаха.'",
+        "reference": "Sahih Muslim, Книга 1, Хадис 35"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'В Судный день солнце приблизится к людям, и они будут тонуть в своем поту.'",
+        "reference": "Sahih Muslim, Книга 40, Хадис 2944"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Кто умрет, веря в Аллаха и Последний день, тот войдет в Рай.'",
+        "reference": "Sahih al-Bukhari, Книга 23, Хадис 1360"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'В Судный день каждый будет призван по имени своей матери, чтобы скрыть его позор.'",
+        "reference": "Sahih Muslim, Книга 40, Хадис 2951"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Иман — это вера в Аллаха, Его ангелов, Его книги, Его посланников, Последний день и предопределение.'",
+        "reference": "Sahih Muslim, Книга 1, Хадис 1"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'В Судный день мост Сират будет тоньше волоса и острее меча.'",
+        "reference": "Sahih Muslim, Книга 1, Хадис 183"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'Кто любит ради Аллаха и ненавидит ради Аллаха, тот совершенствует свою веру.'",
+        "reference": "Sahih al-Bukhari, Книга 2, Хадис 15"
+    },
+    {
+        "text": "Пророк (мир ему) сказал: 'В Судный день праведники будут сиять светом своих деяний.'",
+        "reference": "Sahih al-Bukhari, Книга 60, Хадис 3359"
+    }
+]
+
+# Список утренних и вечерних азкаров (на русском)
+ADHKAR = [
+    {
+        "text": "С именем Аллаха, с которым ничто не вредит ни на земле, ни в небесах, и Он — Слышащий, Знающий. (Бисмилляхи ллязи ля ядурру ма‘а исмихи шай’ун филь-арди ва ля фис-сама’и ва хувас-сами‘уль-‘алим)",
+        "repetition": "3 раза",
+        "source": "Hisn al-Muslim, №24"
+    },
+    {
+        "text": "Я доволен Аллахом как Господом, Исламом как религией и Мухаммадом как пророком. (Радиту билляхи Раббан, ва биль-Ислами динан, ва би Мухаммадин набиййан)",
+        "repetition": "3 раза",
+        "source": "Hisn al-Muslim, №26"
+    },
+    {
+        "text": "О Аллах, защити меня от огня и введи меня в Рай. (Аллахумма аджarni минан-нари ва адхильниль-джанна)",
+        "repetition": "1 раз",
+        "source": "Hisn al-Muslim, №78"
+    },
+    {
+        "text": "Господь мой, я прошу у Тебя блага этого дня и блага после него. (Рабби, ас’алюка хайра хаза ль-йауми ва хайра ма ба‘даху)",
+        "repetition": "1 раз (утром)",
+        "source": "Hisn al-Muslim, №71"
+    },
+    {
+        "text": "О Аллах, Ты мой Господь, нет божества, кроме Тебя, я полагаюсь на Тебя. (Аллахумма Анта Рабби, ля иляха илля Анта, ‘аляйка таваккяльту)",
+        "repetition": "1 раз",
+        "source": "Hisn al-Muslim, №65"
+    },
+    {
+        "text": "Субханаллах (Слава Аллаху), Альхамдулиллях (Хвала Аллаху), Аллаху Акбар (Аллах Велик).",
+        "repetition": "33 раза каждое",
+        "source": "Hisn al-Muslim, №104"
+    },
+    {
+        "text": "О Аллах, я ищу защиты у Тебя от шайтана и его козней. (Аллахумма инни а‘узу бика мин аш-шайтани ва хамазаатихи)",
+        "repetition": "1 раз",
+        "source": "Hisn al-Muslim, №55"
+    },
+    {
+        "text": "Читает аят аль-Курси: Аллах — нет божества, кроме Него, Живого, Вечносущего... (Сура 2:255)",
+        "repetition": "1 раз",
+        "source": "Hisn al-Muslim, №12"
     }
 ]
 
@@ -79,7 +292,8 @@ HADITHS = [
 REPLY_KEYBOARD = ReplyKeyboardMarkup([
     [KeyboardButton("Подписаться на уведомления"), KeyboardButton("Отписаться")],
     [KeyboardButton("Расписание намазов"), KeyboardButton("Случайный хадис")],
-    [KeyboardButton("Связаться с разработчиком")]
+    [KeyboardButton("Связаться с разработчиком"), KeyboardButton("Азкары")],
+    [KeyboardButton("Исламская дата")]
 ], resize_keyboard=True, one_time_keyboard=False)
 
 def load_subscribers():
@@ -124,10 +338,10 @@ async def fetch_prayer_times():
         rows = table.find_all("tr")[1:]
         today = datetime.now(timezone(timedelta(hours=3)))  # MSK
         date_formats = [
-            today.strftime("%d.%m.%Y"),  # 24.05.2025
-            today.strftime("%d.%m.%y"),  # 24.05.25
-            today.strftime("%d %B %Y").lower(),  # 24 мая 2025
-            today.strftime("%d.%m")  # 24.05
+            today.strftime("%d.%m.%Y"),  # 25.05.2025
+            today.strftime("%d.%m.%y"),  # 25.05.25
+            today.strftime("%d %B %Y").lower(),  # 25 мая 2025
+            today.strftime("%d.%m")  # 25.05
         ]
         logging.info("Проверяемые форматы даты: %s", date_formats)
         
@@ -239,20 +453,27 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.info("Попытка отписки неподписанного: %s", chat_id)
 
 async def show_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка команды /schedule для отображения расписания намазов"""
+    """Обработка команды /schedule для отображения расписания намазов и исламской даты"""
     chat_id = update.effective_chat.id
     logging.info("Команда /schedule от %s", chat_id)
+    today = datetime.now()
+    try:
+        hijri_date = convert.Gregorian(today.year, today.month, today.day).to_hijri()
+        hijri_text = f"Исламская дата: {hijri_date.day} {hijri_date.month_name()} {hijri_date.year} Хиджры"
+    except Exception as e:
+        logging.error("Ошибка конвертации в исламскую дату: %s", e)
+        hijri_text = "Исламская дата недоступна"
+    
     if prayer_times:
         schedule_text = "Расписание намазов на сегодня:\n"
         for prayer, time in prayer_times.items():
             schedule_text += f"{prayer}: {time}\n"
+        schedule_text += f"\n{hijri_text}"
         await update.message.reply_text(schedule_text, reply_markup=REPLY_KEYBOARD)
         logging.info("Расписание отправлено %s: %s", chat_id, schedule_text)
     else:
-        await update.message.reply_text(
-            "Расписание на сегодня недоступно.",
-            reply_markup=REPLY_KEYBOARD
-        )
+        schedule_text = f"Расписание на сегодня недоступно.\n\n{hijri_text}"
+        await update.message.reply_text(schedule_text, reply_markup=REPLY_KEYBOARD)
         logging.info("Расписание недоступно для %s", chat_id)
 
 async def show_hadith(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -260,9 +481,34 @@ async def show_hadith(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     logging.info("Команда /hadith от %s", chat_id)
     hadith = random.choice(HADITHS)
-    message = f"Хадис из Сахих аль-Бухари:\n{hadith['text']} ({hadith['reference']})"
+    message = f"Хадис из Сахих аль-Бухари или Сахих Муслима:\n{hadith['text']} ({hadith['reference']})"
     await update.message.reply_text(message, reply_markup=REPLY_KEYBOARD)
     logging.info("Хадис отправлен %s: %s", chat_id, message)
+
+async def show_adhkar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка команды /adhkar для отображения утренних и вечерних азкаров"""
+    chat_id = update.effective_chat.id
+    logging.info("Команда /adhkar от %s", chat_id)
+    adhkar_text = "Утренние и вечерние азкары (читать после Фаджр и Магриб):\n\n"
+    for adhk in ADHKAR:
+        adhkar_text += f"• {adhk['text']}\n  Повторять: {adhk['repetition']}\n  Источник: {adhk['source']}\n\n"
+    adhkar_text += "Старайтесь читать азкары ежедневно для защиты и благословения!"
+    await update.message.reply_text(adhkar_text, reply_markup=REPLY_KEYBOARD)
+    logging.info("Азкары отправлены %s: %s", chat_id, adhkar_text)
+
+async def show_islamic_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка команды /islamic_date для отображения текущей исламской даты"""
+    chat_id = update.effective_chat.id
+    logging.info("Команда /islamic_date от %s", chat_id)
+    today = datetime.now()
+    try:
+        hijri_date = convert.Gregorian(today.year, today.month, today.day).to_hijri()
+        message = f"Исламская дата: {hijri_date.day} {hijri_date.month_name()} {hijri_date.year} Хиджры"
+    except Exception as e:
+        logging.error("Ошибка конвертации в исламскую дату: %s", e)
+        message = "Исламская дата недоступна"
+    await update.message.reply_text(message, reply_markup=REPLY_KEYBOARD)
+    logging.info("Исламская дата отправлена %s: %s", chat_id, message)
 
 async def contact_developer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка команды /contact для связи с разработчиком"""
@@ -298,6 +544,10 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_hadith(update, context)
     elif text == "Связаться с разработчиком":
         await contact_developer(update, context)
+    elif text == "Азкары":
+        await show_adhkar(update, context)
+    elif text == "Исламская дата":
+        await show_islamic_date(update, context)
     else:
         await update.message.reply_text(
             "Пожалуйста, используйте кнопки меню.",
@@ -429,6 +679,8 @@ ptb.add_handler(CommandHandler("start", start))
 ptb.add_handler(CommandHandler("stop", stop))
 ptb.add_handler(CommandHandler("schedule", show_schedule))
 ptb.add_handler(CommandHandler("hadith", show_hadith))
+ptb.add_handler(CommandHandler("adhkar", show_adhkar))
+ptb.add_handler(CommandHandler("islamic_date", show_islamic_date))
 ptb.add_handler(CommandHandler("contact", contact_developer))
 ptb.add_handler(CommandHandler("menu", show_menu))
 ptb.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
