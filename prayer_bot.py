@@ -216,7 +216,7 @@ async def on_startup():
                 "Зухр": "12:00",
                 "Аср": "16:00",
                 "Магриб": "18:30",
-                "Иша": "20:00"
+                "Иша": "22:35"
             })
             logging.info("Тестовое расписание: %s", prayer_times)
         schedule_prayer_notifications()
