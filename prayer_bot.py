@@ -124,7 +124,7 @@ async def send_prayer_notification(prayer_name: str, prayer_time: str):
     logging.info("Вызов send_prayer_notification: %s на %s", prayer_name, prayer_time)
     now_msk = datetime.now(timezone(timedelta(hours=3))).strftime("%H:%M:%S")  # MSK
     now_utc = datetime.now(timezone.utc).strftime("%H:%M:%S")  # UTC
-    message = f"Время намаза {prayer_name}: {prayer_time} (MSK: {now_msk}, UTC: {now_utc})"
+    message = f"Спешите на намаз! Спешите к спасению! {prayer_name}: {prayer_time} (MSK: {now_msk}, UTC: {now_utc})"
     logging.info("Отправка уведомления: %s, подписчики: %s", message, subscribers)
     try:
         for chat_id in subscribers:
@@ -190,6 +190,20 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Вы не подписаны на уведомления.")
         logging.info("Попытка отписки неподписанного: %s", chat_id)
 
+async def show_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка команды /schedule для отображения расписания намазов"""
+    chat_id = update.effective_chat.id
+    logging.info("Команда /schedule от %s", chat_id)
+    if prayer_times:
+        schedule_text = "Расписание намазов на сегодня:\n"
+        for prayer, time in prayer_times.items():
+            schedule_text += f"{prayer}: {time}\n"
+        await update.message.reply_text(schedule_text)
+        logging.info("Расписание отправлено %s: %s", chat_id, schedule_text)
+    else:
+        await update.message.reply_text("Расписание на сегодня недоступно.")
+        logging.info("Расписание недоступно для %s", chat_id)
+
 # FastAPI webhook endpoint
 @app.post("/")
 async def process_update(request: Request):
@@ -244,7 +258,7 @@ async def on_startup():
             now = datetime.now(timezone(timedelta(hours=3)))  # MSK
             future = now + timedelta(minutes=2)  # Уведомление через 2 минуты
             prayer_times.update({
-                "Фаджр": future.strftime("%H:%M"),  # Быстрый тест
+                "Фаджр(Сабах)": future.strftime("%H:%M"),  # Быстрый тест
                 "Зухр": "12:00",
                 "Аср": "16:00",
                 "Магриб": "18:30",
@@ -295,6 +309,7 @@ async def on_shutdown():
 # Добавление обработчиков команд
 ptb.add_handler(CommandHandler("start", start))
 ptb.add_handler(CommandHandler("stop", stop))
+ptb.add_handler(CommandHandler("schedule", show_schedule))
 
 if __name__ == "__main__":
     import uvicorn
