@@ -23,12 +23,13 @@ logging.basicConfig(
 
 # Конфигурация
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 PRAYER_URL = "https://qmdi.ru/raspisanie-namazov/"
-SUBSCRIBERS_FILE = "subscribers.json"
+SUBSCRIBERS_FILE = "./subscribers.json"  # Явный путь в корне проекта
 
 # Проверка переменных окружения
-logging.info("Проверка переменных окружения: BOT_TOKEN=%s, WEBHOOK_URL=%s", 
-             "set" if BOT_TOKEN else "not set", os.getenv("WEBHOOK_URL"))
+logging.info("Проверка переменных окружения: BOT_TOKEN=%s, WEBHOOK_URL=%s, PORT=%s",
+             "set" if BOT_TOKEN else "not set", WEBHOOK_URL, os.getenv("PORT"))
 
 # Инициализация FastAPI
 app = FastAPI()
@@ -50,7 +51,8 @@ def load_subscribers():
                 subscribers = set(json.load(f))
             logging.info("Подписчики загружены: %s", subscribers)
         else:
-            logging.info("Файл подписчиков не существует")
+            logging.info("Файл подписчиков не существует, создается новый")
+            save_subscribers()  # Создаем пустой файл
     except Exception as e:
         logging.error("Ошибка загрузки подписчиков: %s", e)
     return subscribers
@@ -59,7 +61,6 @@ def save_subscribers():
     """Сохранение подписчиков в файл"""
     logging.info("Сохранение подписчиков в %s", SUBSCRIBERS_FILE)
     try:
-        os.makedirs(os.path.dirname(SUBSCRIBERS_FILE), exist_ok=True)
         with open(SUBSCRIBERS_FILE, "w") as f:
             json.dump(list(subscribers), f)
         logging.info("Подписчики сохранены: %s", subscribers)
@@ -70,7 +71,7 @@ async def fetch_prayer_times():
     """Получение времени намаза с сайта qmdi.ru"""
     logging.info("Начало парсинга расписания с %s", PRAYER_URL)
     try:
-        response = requests.get(PRAYER_URL)
+        response = requests.get(PRAYER_URL, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
         
@@ -80,22 +81,31 @@ async def fetch_prayer_times():
             return False
         
         rows = table.find_all("tr")[1:]
-        today = datetime.now(timezone(timedelta(hours=3))).strftime("%d.%m.%Y")  # MSK
-        logging.info("Проверяем дату: %s", today)
+        today = datetime.now(timezone(timedelta(hours=3)))  # MSK
+        date_formats = [
+            today.strftime("%d.%m.%Y"),  # 24.05.2025
+            today.strftime("%d.%m.%y"),  # 24.05.25
+            today.strftime("%d %B %Y").lower(),  # 24 мая 2025
+            today.strftime("%d.%m")  # 24.05
+        ]
+        logging.info("Проверяемые форматы даты: %s", date_formats)
         
         for row in rows:
             cells = row.find_all("td")
-            if len(cells) >= 6 and cells[0].text.strip() == today:
-                prayer_times.update({
-                    "Фаджр": cells[1].text.strip(),
-                    "Зухр": cells[2].text.strip(),
-                    "Аср": cells[3].text.strip(),
-                    "Магриб": cells[4].text.strip(),
-                    "Иша": cells[5].text.strip()
-                })
-                logging.info("Расписание найдено: %s", prayer_times)
-                return True
-        logging.warning("Расписание на %s не найдено", today)
+            if len(cells) >= 6:
+                date_text = cells[0].text.strip().lower()
+                logging.info("Найдена дата в таблице: %s", date_text)
+                if any(date_format in date_text for date_format in date_formats):
+                    prayer_times.update({
+                        "Фаджр": cells[1].text.strip(),
+                        "Зухр": cells[2].text.strip(),
+                        "Аср": cells[3].text.strip(),
+                        "Магриб": cells[4].text.strip(),
+                        "Иша": cells[5].text.strip()
+                    })
+                    logging.info("Расписание найдено: %s", prayer_times)
+                    return True
+        logging.warning("Расписание на %s не найдено", date_formats)
         return False
     except Exception as e:
         logging.error("Ошибка парсинга: %s", e)
@@ -198,26 +208,34 @@ async def on_startup():
     logging.info("Запуск бота")
     try:
         load_subscribers()
-        await fetch_prayer_times()
+        if not await fetch_prayer_times():
+            logging.warning("Используется тестовое расписание")
+            now = datetime.now(timezone(timedelta(hours=3))).strftime("%H:%M")  # MSK
+            prayer_times.update({
+                "Фаджр": now,  # Текущее время для теста
+                "Зухр": "12:00",
+                "Аср": "16:00",
+                "Магриб": "18:30",
+                "Иша": "20:00"
+            })
+            logging.info("Тестовое расписание: %s", prayer_times)
         schedule_prayer_notifications()
         schedule.every().day.at("00:01").do(
             lambda: ptb.create_task(update_prayer_times_daily())
         )
-        webhook_url = os.getenv("WEBHOOK_URL")
-        if not webhook_url:
+        if not WEBHOOK_URL:
             logging.error("WEBHOOK_URL не установлен")
             raise ValueError("WEBHOOK_URL не установлен")
         if not BOT_TOKEN:
             logging.error("BOT_TOKEN не установлен")
             raise ValueError("BOT_TOKEN не установлен")
         
-        await ptb.bot.setWebhook(webhook_url)
-        logging.info("Webhook установлен: %s", webhook_url)
+        await ptb.bot.setWebhook(WEBHOOK_URL)
+        logging.info("Webhook установлен: %s", WEBHOOK_URL)
         await ptb.initialize()
         await ptb.start()
         logging.info("Бот успешно запущен")
 
-        # Запуск планировщика в фоновом режиме
         async def run_scheduler():
             logging.info("Запуск планировщика")
             while True:
