@@ -622,7 +622,7 @@ async def on_startup():
             now = datetime.now(timezone(timedelta(hours=3)))  # MSK
             future = now + timedelta(minutes=2)  # Уведомление через 2 минуты
             prayer_times.update({
-                "Фаджр (Сабах)": "03:07",
+                "Фаджр (Сабах)": "01:05",
                 "Зухр (Уйле)": "12:45",
                 "Аср (Экинди)": "16:46",
                 "Магриб (Акъшам)": "20:26",
