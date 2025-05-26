@@ -13,7 +13,6 @@ import logging
 import sys
 import random
 import aiohttp
-from hijri_converter import convert
 
 # Проверка наличия pytz
 try:
@@ -48,8 +47,9 @@ app = FastAPI()
 # Инициализация бота
 ptb = Application.builder().token(BOT_TOKEN).updater(None).build()
 
-# Хранилище расписания намаза и подписчиков
+# Хранилище расписания намаза, исламской даты и подписчиков
 prayer_times = {}
+islamic_date = {"day": "", "month": "", "year": ""}
 subscribers = set()
 
 # Список хадисов из Сахих аль-Бухари и Сахих Муслима (на русском)
@@ -322,45 +322,76 @@ def save_subscribers():
         logging.error("Ошибка сохранения подписчиков: %s", e)
 
 async def fetch_prayer_times():
-    """Получение времени намаза с сайта qmdi.ru"""
-    logging.info("Начало парсинга расписания с %s", PRAYER_URL)
+    """Получение времени намаза и исламской даты с сайта qmdi.ru из блока <div class='namaz-main active-namaz'>"""
+    logging.info("Начало парсинга расписания и исламской даты с %s", PRAYER_URL)
     try:
-        response = requests.get(PRAYER_URL, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-        
-        table = soup.find("table")
-        if not table:
-            logging.error("Таблица не найдена")
-            return False
-        
-        rows = table.find_all("tr")[1:]
-        today = datetime.now(timezone(timedelta(hours=3)))  # MSK
-        date_formats = [
-            today.strftime("%d.%m.%Y"),  # 25.05.2025
-            today.strftime("%d.%m.%y"),  # 25.05.25
-            today.strftime("%d %B %Y").lower(),  # 25 мая 2025
-            today.strftime("%d.%m")  # 25.05
-        ]
-        logging.info("Проверяемые форматы даты: %s", date_formats)
-        
-        for row in rows:
-            cells = row.find_all("td")
-            if len(cells) >= 6:
-                date_text = cells[0].text.strip().lower()
-                logging.info("Найдена дата в таблице: %s", date_text)
-                if any(date_format in date_text for date_format in date_formats):
-                    prayer_times.update({
-                        "Фаджр": cells[1].text.strip(),
-                        "Зухр": cells[2].text.strip(),
-                        "Аср": cells[3].text.strip(),
-                        "Магриб": cells[4].text.strip(),
-                        "Иша": cells[5].text.strip()
-                    })
+        async with aiohttp.ClientSession() as session:
+            async with session.get(PRAYER_URL, timeout=10) as response:
+                response.raise_for_status()
+                soup = BeautifulSoup(await response.text(), "html.parser")
+
+                # Поиск блока с классом 'namaz-main active-namaz'
+                namaz_block = soup.find("div", class_="namaz-main active-namaz")
+                if not namaz_block:
+                    logging.error("Блок 'namaz-main active-namaz' не найден")
+                    return False
+
+                # Парсинг исламской даты
+                islamic_calendar = namaz_block.find("div", class_="islCalendar")
+                if islamic_calendar:
+                    day = islamic_calendar.find("div", class_="islDate")
+                    month = islamic_calendar.find("div", class_="islMonth")
+                    year = islamic_calendar.find("div", class_="islYear")
+                    if day and month and year:
+                        islamic_date["day"] = day.text.strip()
+                        islamic_date["month"] = month.text.strip()
+                        # Извлекаем только год по хиджре (до ' | ')
+                        islamic_date["year"] = year.text.strip().split(" | ")[0]
+                        logging.info("Исламская дата найдена: %s", islamic_date)
+                    else:
+                        logging.warning("Не удалось извлечь исламскую дату")
+                        islamic_date.update({"day": "", "month": "", "year": ""})
+                else:
+                    logging.warning("Блок 'islCalendar' не найден")
+                    islamic_date.update({"day": "", "month": "", "year": ""})
+
+                # Поиск таблицы с расписанием намазов
+                table = namaz_block.find("table")
+                if not table:
+                    logging.error("Таблица не найдена в блоке 'namaz-main active-namaz'")
+                    return False
+
+                # Словарь для сопоставления сокращённых названий с полными
+                prayer_mapping = {
+                    "Утр.": "Фаджр(Сабах)",
+                    "Обед.": "Зухр(Уйле)",
+                    "Пол.": "Аср(Экинди)",
+                    "Веч.": "Магриб(Акъшам)",
+                    "Ноч.": "Иша(Ятсы)"
+                }
+
+                # Очистка текущего расписания
+                prayer_times.clear()
+
+                # Извлечение строк таблицы
+                rows = table.find_all("tr")
+                for row in rows:
+                    cells = row.find_all("td")
+                    if len(cells) >= 2:
+                        prayer_short = cells[0].text.strip()  # Название намаза
+                        prayer_time = cells[1].text.strip()   # Время намаза
+                        if prayer_short in prayer_mapping:
+                            prayer_times[prayer_mapping[prayer_short]] = prayer_time
+                        else:
+                            logging.debug("Пропущена строка с названием: %s", prayer_short)
+
+                if prayer_times:
                     logging.info("Расписание найдено: %s", prayer_times)
                     return True
-        logging.warning("Расписание на %s не найдено", date_formats)
-        return False
+                else:
+                    logging.warning("Расписание не найдено в таблице")
+                    return False
+
     except Exception as e:
         logging.error("Ошибка парсинга: %s", e)
         return False
@@ -394,7 +425,7 @@ def schedule_prayer_notifications():
         try:
             # Конвертируем MSK время в UTC для сервера
             msk_time = datetime.strptime(time_str, "%H:%M").replace(
-                tzinfo=msk_tz, year=2025, month=5, day=25
+                tzinfo=msk_tz, year=2025, month=5, day=26
             )
             utc_time = msk_time.astimezone(timezone.utc).strftime("%H:%M")
             schedule.every().day.at(utc_time).do(
@@ -455,12 +486,11 @@ async def show_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка команды /schedule для отображения расписания намазов и исламской даты"""
     chat_id = update.effective_chat.id
     logging.info("Команда /schedule от %s", chat_id)
-    today = datetime.now()
-    try:
-        hijri_date = convert.Gregorian(today.year, today.month, today.day).to_hijri()
-        hijri_text = f"Исламская дата: {hijri_date.day} {hijri_date.month_name()} {hijri_date.year} Хиджры"
-    except Exception as e:
-        logging.error("Ошибка конвертации в исламскую дату: %s", e)
+    
+    # Формирование текста исламской даты
+    if islamic_date["day"] and islamic_date["month"] and islamic_date["year"]:
+        hijri_text = f"Исламская дата: {islamic_date['day']} {islamic_date['month']} {islamic_date['year']} Хиджры"
+    else:
         hijri_text = "Исламская дата недоступна"
     
     if prayer_times:
@@ -499,12 +529,9 @@ async def show_islamic_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка команды /islamic_date для отображения текущей исламской даты"""
     chat_id = update.effective_chat.id
     logging.info("Команда /islamic_date от %s", chat_id)
-    today = datetime.now()
-    try:
-        hijri_date = convert.Gregorian(today.year, today.month, today.day).to_hijri()
-        message = f"Дата: {hijri_date.day} {hijri_date.month_name()} {hijri_date.year} Хиджры"
-    except Exception as e:
-        logging.error("Ошибка конвертации в дату: %s", e)
+    if islamic_date["day"] and islamic_date["month"] and islamic_date["year"]:
+        message = f"Дата: {islamic_date['day']} {islamic_date['month']} {islamic_date['year']} Хиджры"
+    else:
         message = "Дата недоступна"
     await update.message.reply_text(message, reply_markup=REPLY_KEYBOARD)
     logging.info("Дата отправлена %s: %s", chat_id, message)
@@ -620,15 +647,16 @@ async def on_startup():
         if not await fetch_prayer_times():
             logging.warning("Используется тестовое расписание")
             now = datetime.now(timezone(timedelta(hours=3)))  # MSK
-            future = now + timedelta(minutes=2)  # Уведомление через 2 минуты
             prayer_times.update({
-                "Фаджр (Сабах)": "03:04",
-                "Зухр (Уйле)": "12:45",
-                "Аср (Экинди)": "16:47",
-                "Магриб (Акъшам)": "20:28",
-                "Иша (Ятсы)": "22:16"
+                "Фаджр": "03:04",
+                "Зухр": "12:45",
+                "Аср": "16:47",
+                "Магриб": "20:28",
+                "Иша": "22:16"
             })
+            islamic_date.update({"day": "29", "month": "Зуль-къаде", "year": "1446"})
             logging.info("Тестовое расписание: %s", prayer_times)
+            logging.info("Тестовая исламская дата: %s", islamic_date)
         schedule_prayer_notifications()
         schedule.every().day.at("00:01").do(
             lambda: ptb.create_task(update_prayer_times_daily())
