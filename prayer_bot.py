@@ -1,3 +1,4 @@
+```python
 import asyncio
 import requests
 from bs4 import BeautifulSoup
@@ -659,7 +660,7 @@ async def on_startup():
             logging.info("Тестовое расписание: %s", prayer_times)
             logging.info("Тестовая исламская дата: %s", islamic_date)
         schedule_prayer_notifications()
-        schedule.every().day.at("00:01").do(
+        schedule.every().day.at("21:01").do(  # Изменено на 21:01 UTC = 00:01 MSK
             lambda: ptb.create_task(update_prayer_times_daily())
         )
         if not WEBHOOK_URL:
